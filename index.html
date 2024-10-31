@@ -9,8 +9,7 @@
   <!-- Include Leaflet.js for OpenStreetMap -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-  <!-- Include Polyline Decoder for OSRM -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/polyline/1.1.1/polyline.js"></script>
+  <!-- Removed Polyline Decoder for OSRM -->
   <style>
     body, html {
       margin: 0;
@@ -105,12 +104,6 @@
 
   <!-- Main Script -->
   <script>
-    // Check if polyline is loaded
-    if (typeof polyline === 'undefined') {
-      console.error('Polyline library is not loaded.');
-      alert('Error: Polyline library is not loaded. Please check your internet connection or script inclusion.');
-    }
-
     async function calculateRoute() {
       // Show loading indicator
       document.getElementById('loading').style.display = 'block';
@@ -120,6 +113,7 @@
       var end = document.getElementById('end').value.trim();
       if (!end) {
         showError('Please enter a destination.');
+        hideLoading();
         return;
       }
 
@@ -135,7 +129,7 @@
         try {
           var endCoords = await geocode(end);
           var routeData = await getRoute(startCoords, endCoords);
-          var path = decodePolyline(routeData.routes[0].geometry);
+          var path = decodeRouteGeometry(routeData.routes[0].geometry.coordinates);
           var samples = samplePath(path, 5); // sample every 5 meters
           placeSpheres(samples);
           hideControls();
@@ -183,7 +177,7 @@
 
     function getRoute(startCoords, endCoords) {
       return new Promise(function(resolve, reject) {
-        var url = `https://router.project-osrm.org/route/v1/foot/${startCoords[1]},${startCoords[0]};${endCoords[1]},${endCoords[0]}?overview=full&geometries=polyline&steps=false`;
+        var url = `https://router.project-osrm.org/route/v1/foot/${startCoords[1]},${startCoords[0]};${endCoords[1]},${endCoords[0]}?overview=full&geometries=geojson&steps=false`;
         fetch(url)
           .then(response => response.json())
           .then(data => {
@@ -197,12 +191,10 @@
       });
     }
 
-    function decodePolyline(polylineStr) {
-      if (typeof polyline === 'undefined') {
-        throw 'Polyline library is not loaded.';
-      }
-      return polyline.decode(polylineStr).map(function(coords) {
-        return [coords[0], coords[1]];
+    function decodeRouteGeometry(routeGeometry) {
+      // routeGeometry is an array of [lng, lat] coordinates
+      return routeGeometry.map(function(coord) {
+        return [coord[1], coord[0]]; // Swap to [lat, lng]
       });
     }
 
