@@ -2,14 +2,18 @@
 <html>
 <head>
   <title>AR Navigation with Spheres Every 5 Meters using OpenStreetMap</title>
+  
   <!-- Include A-Frame -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+  
   <!-- Include AR.js for A-Frame -->
-  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
-  <!-- Include Leaflet.js for OpenStreetMap -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-  <!-- Removed Polyline Decoder for OSRM -->
+  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.3.2/aframe/build/aframe-ar.js"></script>
+  
+  <!-- Include aframe-gps-component -->
+  <script src="https://cdn.jsdelivr.net/npm/aframe-gps-component@0.6.2/dist/aframe-gps-component.min.js"></script>
+  
+  <!-- Removed Leaflet.js as it's not used -->
+  
   <style>
     body, html {
       margin: 0;
@@ -104,6 +108,15 @@
 
   <!-- Main Script -->
   <script>
+    // Define the rotation-reader component if needed
+    AFRAME.registerComponent('rotation-reader', {
+      tick: function () {
+        // Example: Log the camera's rotation every tick
+        // You can implement any desired functionality here
+        // console.log(this.el.getAttribute('rotation'));
+      }
+    });
+
     async function calculateRoute() {
       // Show loading indicator
       document.getElementById('loading').style.display = 'block';
@@ -158,37 +171,48 @@
       document.getElementById('controls').style.display = 'none';
     }
 
-    function geocode(query) {
-      return new Promise(function(resolve, reject) {
-        var url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
-        fetch(url)
-          .then(response => response.json())
-          .then(data => {
-            if (data && data.length > 0) {
-              var coords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
-              resolve(coords);
-            } else {
-              reject('No results found for destination.');
-            }
-          })
-          .catch(error => reject('Geocoding failed.'));
-      });
+    async function geocode(query) {
+      try {
+        // Note: Nominatim may have CORS restrictions and usage policies.
+        // For production, consider using a backend proxy or a different geocoding service.
+        var url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
+        const response = await fetch(url, {
+          headers: {
+            'Accept': 'application/json'
+          }
+        });
+        if (!response.ok) {
+          throw new Error('Geocoding request failed.');
+        }
+        const data = await response.json();
+        if (data && data.length > 0) {
+          var coords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+          return coords;
+        } else {
+          throw new Error('No results found for destination.');
+        }
+      } catch (error) {
+        throw new Error('Geocoding failed.');
+      }
     }
 
-    function getRoute(startCoords, endCoords) {
-      return new Promise(function(resolve, reject) {
-        var url = `https://router.project-osrm.org/route/v1/foot/${startCoords[1]},${startCoords[0]};${endCoords[1]},${endCoords[0]}?overview=full&geometries=geojson&steps=false`;
-        fetch(url)
-          .then(response => response.json())
-          .then(data => {
-            if (data && data.routes && data.routes.length > 0) {
-              resolve(data);
-            } else {
-              reject('No route found.');
-            }
-          })
-          .catch(error => reject('Routing failed.'));
-      });
+    async function getRoute(startCoords, endCoords) {
+      try {
+        // Consider using a different routing service if CORS issues arise
+        var url = `https://router.project-osrm.org/route/v1/walking/${startCoords[1]},${startCoords[0]};${endCoords[1]},${endCoords[0]}?overview=full&geometries=geojson&steps=false`;
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error('Routing request failed.');
+        }
+        const data = await response.json();
+        if (data && data.routes && data.routes.length > 0) {
+          return data;
+        } else {
+          throw new Error('No route found.');
+        }
+      } catch (error) {
+        throw new Error('Routing failed.');
+      }
     }
 
     function decodeRouteGeometry(routeGeometry) {
@@ -264,7 +288,7 @@
         entity.setAttribute('gps-entity-place', `latitude: ${coords[0]}; longitude: ${coords[1]};`);
         entity.setAttribute('material', 'color: red; opacity: 0.6;');
         entity.setAttribute('radius', 1);
-        entity.setAttribute('scale', '5 5 5');
+        entity.setAttribute('scale', '2 2 2'); // Adjusted scale for better visibility
         entity.setAttribute('class', 'waypoint');
         scene.appendChild(entity);
       });
