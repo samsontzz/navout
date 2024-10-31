@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>AR Navigation with Spheres Every 10 Meters using OpenStreetMap</title>
+  <!-- Include A-Frame -->
+  <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+  <!-- Include AR.js for A-Frame -->
+  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+  <!-- Include Leaflet.js for OpenStreetMap -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+  <!-- Include Polyline Decoder for OSRM -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/polyline/1.1.1/polyline.js"></script>
+  <style>
+    body, html { margin: 0; padding: 0; overflow: hidden; }
+    #map { height: 30%; width: 100%; }
+    #controls { padding: 10px; background: white; }
+    #ar-scene { height: 70%; width: 100%; }
+  </style>
+</head>
+<body>
+  <!-- Input form for start and destination -->
+  <div id="controls">
+    <input type="text" id="start" placeholder="Starting Point">
+    <input type="text" id="end" placeholder="Destination Point">
+    <button onclick="calculateRoute()">Go</button>
+  </div>
+  <!-- Div for map -->
+  <div id="map"></div>
+  <!-- AR scene -->
+  <a-scene embedded arjs='sourceType: webcam;' id="ar-scene">
+    <a-camera gps-camera rotation-reader></a-camera>
+  </a-scene>
+  <!-- Script -->
+  <script>
+    var map;
+    var routingLayer;
+
+    function initMap() {
+      map = L.map('map').setView([0, 0], 14);
+
+      // Add OpenStreetMap tiles
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      // Try HTML5 geolocation to center the map on user's location
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(function(position) {
+          var pos = [position.coords.latitude, position.coords.longitude];
+          map.setView(pos, 14);
+        }, function() {
+          handleLocationError(true);
+        });
+      } else {
+        // Browser doesn't support Geolocation
+        handleLocationError(false);
+      }
+    }
+
+    function handleLocationError(browserHasGeolocation) {
+      console.log(browserHasGeolocation ?
+        'Error: The Geolocation service failed.' :
+        'Error: Your browser doesn\'t support geolocation.');
+    }
+
+    async function calculateRoute() {
+      var start = document.getElementById('start').value;
+      var end = document.getElementById('end').value;
+
+      // Geocode start and end locations using Nominatim API
+      try {
+        var startCoords = await geocode(start);
+        var endCoords = await geocode(end);
+
+        // Request route from OSRM
+        var routeData = await getRoute(startCoords, endCoords);
+
+        // Decode polyline to get path coordinates
+        var path = decodePolyline(routeData.routes[0].geometry);
+
+        // Display route on the map
+        if (routingLayer) {
+          map.removeLayer(routingLayer);
+        }
+        routingLayer = L.polyline(path, {color: 'blue'}).addTo(map);
+        map.fitBounds(routingLayer.getBounds());
+
+        // Now, process the route to get points every 10 meters
+        var samples = samplePath(path, 10); // sample every 10 meters
+        placeSpheres(samples);
+      } catch (error) {
+        console.log(error);
+      }
+    }
+
+    function geocode(query) {
+      return new Promise(function(resolve, reject) {
+        var url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
+        fetch(url)
+          .then(response => response.json())
+          .then(data => {
+            if (data && data.length > 0) {
+              var coords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+              resolve(coords);
+            } else {
+              reject('No results found for ' + query);
+            }
+          })
+          .catch(error => reject(error));
+      });
+    }
+
+    function getRoute(startCoords, endCoords) {
+      return new Promise(function(resolve, reject) {
+        var url = `https://router.project-osrm.org/route/v1/foot/${startCoords[1]},${startCoords[0]};${endCoords[1]},${endCoords[0]}?overview=full&geometries=polyline&steps=false`;
+        fetch(url)
+          .then(response => response.json())
+          .then(data => {
+            if (data && data.routes && data.routes.length > 0) {
+              resolve(data);
+            } else {
+              reject('No route found');
+            }
+          })
+          .catch(error => reject(error));
+      });
+    }
+
+    function decodePolyline(polylineStr) {
+      return polyline.decode(polylineStr).map(function(coords) {
+        return [coords[0], coords[1]];
+      });
+    }
+
+    function samplePath(path, interval) {
+      var samples = [];
+      var accumulatedDistance = 0;
+
+      for (var i = 1; i < path.length; i++) {
+        var segmentStart = L.latLng(path[i - 1][0], path[i - 1][1]);
+        var segmentEnd = L.latLng(path[i][0], path[i][1]);
+        var segmentDistance = segmentStart.distanceTo(segmentEnd);
+
+        while (accumulatedDistance + segmentDistance >= interval) {
+          var remainingDistance = interval - accumulatedDistance;
+          var fraction = remainingDistance / segmentDistance;
+          var interpolatedLat = segmentStart.lat + fraction * (segmentEnd.lat - segmentStart.lat);
+          var interpolatedLng = segmentStart.lng + fraction * (segmentEnd.lng - segmentStart.lng);
+          samples.push([interpolatedLat, interpolatedLng]);
+
+          // Prepare for next segment
+          segmentStart = L.latLng(interpolatedLat, interpolatedLng);
+          segmentDistance = segmentStart.distanceTo(segmentEnd);
+          accumulatedDistance = 0;
+        }
+        accumulatedDistance += segmentDistance;
+      }
+      return samples;
+    }
+
+    function placeSpheres(samples) {
+      var scene = document.querySelector('a-scene');
+
+      // Remove existing spheres if any
+      var existingSpheres = document.querySelectorAll('.waypoint');
+      existingSpheres.forEach(function(sphere) {
+        sphere.parentNode.removeChild(sphere);
+      });
+
+      samples.forEach(function(coords) {
+        var entity = document.createElement('a-sphere');
+        entity.setAttribute('gps-entity-place', `latitude: ${coords[0]}; longitude: ${coords[1]};`);
+        entity.setAttribute('material', 'color: red;');
+        entity.setAttribute('radius', 1);
+        entity.setAttribute('scale', '5 5 5');
+        entity.setAttribute('class', 'waypoint');
+        scene.appendChild(entity);
+      });
+    }
+
+    // Call initMap when page loads
+    window.onload = initMap;
+  </script>
+</body>
+</html>
