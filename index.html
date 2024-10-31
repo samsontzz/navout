@@ -12,40 +12,54 @@
   <!-- Include Polyline Decoder for OSRM -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/polyline/1.1.1/polyline.js"></script>
   <style>
-    body, html { margin: 0; padding: 0; overflow: hidden; height: 100%; }
-    #map { height: 30%; width: 100%; }
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      height: 100%;
+      position: relative;
+    }
+    #map {
+      height: 30%;
+      width: 100%;
+    }
     #controls {
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
       padding: 20px;
-      background: rgba(255, 255, 255, 0.9);
+      background: rgba(255, 255, 255, 0.8);
       border-radius: 10px;
-      text-align: center;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
       z-index: 1;
+      text-align: center;
     }
     #controls input, #controls button {
-      margin: 10px 0;
+      display: block;
+      width: 80%;
+      margin: 10px auto;
       padding: 10px;
       font-size: 16px;
-      width: 200px;
+    }
+    #controls input {
       border: 1px solid #ccc;
       border-radius: 5px;
     }
     #controls button {
-      cursor: pointer;
-      background-color: #007BFF;
+      background-color: #4CAF50;
       color: white;
       border: none;
+      border-radius: 5px;
+      cursor: pointer;
     }
     #controls button:hover {
-      background-color: #0056b3;
+      background-color: #45a049;
     }
-    #ar-scene { height: 70%; width: 100%; }
+    #ar-scene {
+      height: 100%;
+      width: 100%;
+    }
   </style>
 </head>
 <body>
@@ -119,6 +133,10 @@
         // Now, process the route to get points every 10 meters
         var samples = samplePath(path, 10); // sample every 10 meters
         placeSpheres(samples);
+
+        // Hide the controls after route is calculated
+        document.getElementById('controls').style.display = 'none';
+
       } catch (error) {
         console.log(error);
       }
@@ -176,41 +194,4 @@
           var remainingDistance = interval - accumulatedDistance;
           var fraction = remainingDistance / segmentDistance;
           var interpolatedLat = segmentStart.lat + fraction * (segmentEnd.lat - segmentStart.lat);
-          var interpolatedLng = segmentStart.lng + fraction * (segmentEnd.lng - segmentStart.lng);
-          samples.push([interpolatedLat, interpolatedLng]);
-
-          // Prepare for next segment
-          segmentStart = L.latLng(interpolatedLat, interpolatedLng);
-          segmentDistance = segmentStart.distanceTo(segmentEnd);
-          accumulatedDistance = 0;
-        }
-        accumulatedDistance += segmentDistance;
-      }
-      return samples;
-    }
-
-    function placeSpheres(samples) {
-      var scene = document.querySelector('a-scene');
-
-      // Remove existing spheres if any
-      var existingSpheres = document.querySelectorAll('.waypoint');
-      existingSpheres.forEach(function(sphere) {
-        sphere.parentNode.removeChild(sphere);
-      });
-
-      samples.forEach(function(coords) {
-        var entity = document.createElement('a-sphere');
-        entity.setAttribute('gps-entity-place', `latitude: ${coords[0]}; longitude: ${coords[1]};`);
-        entity.setAttribute('material', 'color: red;');
-        entity.setAttribute('radius', 1);
-        entity.setAttribute('scale', '5 5 5');
-        entity.setAttribute('class', 'waypoint');
-        scene.appendChild(entity);
-      });
-    }
-
-    // Call initMap when page loads
-    window.onload = initMap;
-  </script>
-</body>
-</html>
+          var interpolatedLng = segmentStart.lng + fraction * (segmentEnd.lng - segmentStart
